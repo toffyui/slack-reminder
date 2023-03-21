@@ -56,27 +56,48 @@ export class AppController {
     }
   }
 
-  @Post('commands')
+  @Post()
   async handleCommands(@Req() request: Request, @Res() response: Response) {
     const payload = request.body;
     const command = payload.command;
     console.log('Received command:', command);
-    if (command === '/unread') {
-      try {
-        // 未返信のメッセージを取得
-        const unrepliedMentions = await this.appService.fetchUnrepliedMentions(
-          payload.user_id,
-        );
-        await this.appService.sendReminder(payload.user_id, unrepliedMentions);
-        response.status(200).send('リマインダーを送信しました。');
-      } catch (error) {
-        console.error('Error sending reminder:', error);
-        response
-          .status(500)
-          .send('リマインダーの送信中にエラーが発生しました。');
-      }
-    } else {
-      response.status(400).send('無効なコマンドです。');
+    /*
+     * 時間は、次のような形式で指定できる
+     * "hourly"（1時間ごと）
+     * "daily"（毎日）
+     * "weekly"（毎週）
+     */
+    switch (command) {
+      case '/mention-reminder':
+        try {
+          const time = payload.text.trim().toLowerCase();
+          // ユーザーIDとリマインド時間を保存
+          this.appService.addUserReminder(payload.user_id, time);
+          response.status(200).send(`リマインダーが${time}で設定されました。`);
+        } catch (error) {
+          console.error('Error saving user reminder:', error);
+          response
+            .status(500)
+            .send('リマインダーの設定中にエラーが発生しました。');
+        }
+      case '/unread':
+        try {
+          // 未返信のメッセージを取得
+          const unrepliedMentions =
+            await this.appService.fetchUnrepliedMentions(payload.user_id);
+          await this.appService.sendReminder(
+            payload.user_id,
+            unrepliedMentions,
+          );
+          response.status(200).send('リマインダーを送信しました。');
+        } catch (error) {
+          console.error('Error sending reminder:', error);
+          response
+            .status(500)
+            .send('リマインダーの送信中にエラーが発生しました。');
+        }
+      default:
+        response.status(400).send('無効なコマンドです。');
     }
   }
 }
