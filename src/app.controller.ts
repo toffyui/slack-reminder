@@ -1,4 +1,4 @@
-import { Controller, Post, Req, Res } from '@nestjs/common';
+import { Controller, Post, Req, Res, Body } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { AppService } from './app.service';
 import { createEventAdapter } from '@slack/events-api';
@@ -30,8 +30,17 @@ export class AppController {
     });
   }
 
-  @Post('/events')
-  async handleEvents(@Req() req: Request, @Res() res: Response) {
+  @Post('events')
+  async handleEvents(
+    @Body() body: any,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    if (body.type === 'url_verification') {
+      res.send(body.challenge);
+    } else {
+      res.sendStatus(200);
+    }
     this.slackEvents
       .createEventHandler()
       .then((handler) => handler(req, res))
