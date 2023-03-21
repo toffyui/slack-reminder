@@ -80,6 +80,7 @@ export class AppController {
             .status(500)
             .send('リマインダーの設定中にエラーが発生しました。');
         }
+        break;
       case '/unread':
         try {
           // 未返信のメッセージを取得
@@ -96,6 +97,7 @@ export class AppController {
             .status(500)
             .send('リマインダーの送信中にエラーが発生しました。');
         }
+        break;
       default:
         response.status(400).send('無効なコマンドです。');
     }
