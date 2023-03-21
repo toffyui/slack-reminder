@@ -58,7 +58,6 @@ export class AppController {
 
   @Post('commands')
   async handleCommands(@Req() request: Request, @Res() response: Response) {
-    response.status(200);
     const payload = request.body;
     const command = payload.command;
     console.log('Received command:', command);
@@ -70,39 +69,37 @@ export class AppController {
      */
     switch (command) {
       case '/mention-reminder':
-        try {
-          const time = payload.text.trim().toLowerCase();
-          // ユーザーIDとリマインド時間を保存
-          this.appService.addUserReminder(payload.user_id, time);
-          response.status(200).send(`リマインダーが${time}で設定されました。`);
-          return response.send(`リマインダーが${time}で設定されました。`);
-        } catch (error) {
-          console.error('Error saving user reminder:', error);
-          response
-            .status(500)
-            .send('リマインダーの設定中にエラーが発生しました。');
-        }
+        this.handleMentionReminder(payload);
+        response.status(200).send('リマインダーを送信しました。');
         break;
       case '/unread':
-        try {
-          // 未返信のメッセージを取得
-          const unrepliedMentions =
-            await this.appService.fetchUnrepliedMentions(payload.user_id);
-          await this.appService.sendReminder(
-            payload.user_id,
-            unrepliedMentions,
-          );
-          response.status(200).send('リマインダーを送信しました。');
-        } catch (error) {
-          console.error('Error sending reminder:', error);
-          response
-            .status(500)
-            .send('リマインダーの送信中にエラーが発生しました。');
-        }
+        this.handleUnread(payload);
+        response.status(200).send('未読メッセージを取得しています...');
         break;
       default:
         response.status(400).send('無効なコマンドです。');
         return response.status(400).send('無効なコマンドです。');
+    }
+  }
+  async handleMentionReminder(payload) {
+    try {
+      const time = payload.text.trim().toLowerCase();
+      // ユーザーIDとリマインド時間を保存
+      await this.appService.addUserReminder(payload.user_id, time);
+    } catch (error) {
+      console.error('Error saving user reminder:', error);
+    }
+  }
+
+  async handleUnread(payload) {
+    try {
+      // 未返信のメッセージを取得
+      const unrepliedMentions = await this.appService.fetchUnrepliedMentions(
+        payload.user_id,
+      );
+      await this.appService.sendReminder(payload.user_id, unrepliedMentions);
+    } catch (error) {
+      console.error('Error sending reminder:', error);
     }
   }
 }
