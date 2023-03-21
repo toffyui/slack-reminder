@@ -6,7 +6,13 @@ import { ConfigService } from '@nestjs/config';
 
 @Controller()
 export class AppController {
-  private readonly slackEvents;
+  private _slackEvents;
+  get slackEvents() {
+    return this._slackEvents;
+  }
+  set slackEvents(value) {
+    this._slackEvents = value;
+  }
   constructor(
     private readonly appService: AppService,
     private configService: ConfigService,
@@ -14,10 +20,10 @@ export class AppController {
     const slackSigningSecret = this.configService.get<string>(
       'SLACK_SIGNING_SECRET',
     );
-    this.slackEvents = createEventAdapter(slackSigningSecret);
+    this._slackEvents = createEventAdapter(slackSigningSecret);
 
     // メンションイベントのリスナーを登録
-    this.slackEvents.on('app_mention', async (event) => {
+    this._slackEvents.on('app_mention', async (event) => {
       const userId = event.user;
 
       // 未返信のメッセージを取得
@@ -39,15 +45,13 @@ export class AppController {
     if (body.type === 'url_verification') {
       res.send(body.challenge);
     } else {
-      res.sendStatus(200);
-    }
-    this.slackEvents
-      .createEventHandler()
-      .then((handler) => handler(req, res))
-      .catch((error) => {
+      try {
+        await this.slackEvents.handle(req, res);
+      } catch (error) {
         console.error(`Failed to handle event: ${error}`);
         res.status(500).send();
-      });
+      }
+    }
   }
 
   @Post('commands')
