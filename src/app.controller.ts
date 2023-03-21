@@ -42,7 +42,9 @@ export class AppController {
     @Req() req: Request,
     @Res() res: Response,
   ) {
+    console.log('Received event:', body);
     if (body.type === 'url_verification') {
+      console.log('Sending challenge:', body.challenge);
       res.send(body.challenge);
     } else {
       try {
@@ -58,7 +60,7 @@ export class AppController {
   async handleCommands(@Req() request: Request, @Res() response: Response) {
     const payload = request.body;
     const command = payload.command;
-
+    console.log('Received command:', command);
     if (command === '/unread') {
       try {
         // 未返信のメッセージを取得
