@@ -40,4 +40,28 @@ export class AppController {
         res.status(500).send();
       });
   }
+
+  @Post('commands')
+  async handleCommands(@Req() request: Request, @Res() response: Response) {
+    const payload = request.body;
+    const command = payload.command;
+
+    if (command === '/unread') {
+      try {
+        // 未返信のメッセージを取得
+        const unrepliedMentions = await this.appService.fetchUnrepliedMentions(
+          payload.user_id,
+        );
+        await this.appService.sendReminder(payload.user_id, unrepliedMentions);
+        response.status(200).send('リマインダーを送信しました。');
+      } catch (error) {
+        console.error('Error sending reminder:', error);
+        response
+          .status(500)
+          .send('リマインダーの送信中にエラーが発生しました。');
+      }
+    } else {
+      response.status(400).send('無効なコマンドです。');
+    }
+  }
 }
