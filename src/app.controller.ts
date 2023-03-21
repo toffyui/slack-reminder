@@ -56,8 +56,9 @@ export class AppController {
     }
   }
 
-  @Post()
+  @Post('commands')
   async handleCommands(@Req() request: Request, @Res() response: Response) {
+    response.status(200);
     const payload = request.body;
     const command = payload.command;
     console.log('Received command:', command);
@@ -74,6 +75,7 @@ export class AppController {
           // ユーザーIDとリマインド時間を保存
           this.appService.addUserReminder(payload.user_id, time);
           response.status(200).send(`リマインダーが${time}で設定されました。`);
+          return response.send(`リマインダーが${time}で設定されました。`);
         } catch (error) {
           console.error('Error saving user reminder:', error);
           response
@@ -100,6 +102,7 @@ export class AppController {
         break;
       default:
         response.status(400).send('無効なコマンドです。');
+        return response.status(400).send('無効なコマンドです。');
     }
   }
 }
