@@ -251,7 +251,7 @@ export class AppService {
 
   // 認証関連
   generateStateParam() {
-    return randomBytes(16).toString('hex');
+    return randomBytes(32).toString('hex');
   }
 
   isStateParamValid(receivedState: string, storedState: string) {
@@ -262,6 +262,7 @@ export class AppService {
     session.oauthState = state;
     const authUrl = await this.slackInstallProvider.generateInstallUrl({
       scopes: ['commands', 'channels:history', 'channels:join', 'chat:write'],
+      userScopes: ['openid', 'email'],
       metadata: JSON.stringify({ state }),
     });
     return { url: authUrl };
@@ -276,7 +277,6 @@ export class AppService {
       const url = new URL(req.url, baseUrl);
       const receivedState = JSON.parse(url.searchParams.get('metadata')).state;
       const storedState = session.oauthState;
-
       if (!this.isStateParamValid(receivedState, storedState)) {
         throw new Error('Invalid state parameter');
       }
