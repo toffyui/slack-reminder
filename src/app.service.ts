@@ -243,6 +243,11 @@ export class AppService {
     return unrepliedMentions;
   }
 
+  // データベースからユーザーのリマインダーを削除する
+  async deleteUserReminder(userId: string) {
+    await this.userReminderRepository.delete({ userId });
+  }
+
   // 認証関連
   async generateAuthUrl() {
     const authUrl = await this.slackInstallProvider.generateInstallUrl({

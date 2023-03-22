@@ -18,26 +18,49 @@ export class AppController {
      * "weekly"（毎週）
      */
     switch (command) {
-      case '/mention-reminder':
-        // 時間の形式が正しいか確認
-        const time = payload.text.trim().toLowerCase();
-        if (['hourly', 'daily', 'weekly'].includes(time)) {
-          this.handleMentionReminder(payload);
-          response.status(200).send(`リマインダーが${time}で設定されました。`);
-        } else {
+      case '/slack-minder':
+        const text = payload.text.trim().toLowerCase();
+        if (text === 'help') {
           response
             .status(200)
             .send(
-              `無効なリマインダー設定です。以下の形式でリマインダーを設定してください：\n` +
-                `/mention-reminder hourly - 毎時リマインダー\n` +
-                `/mention-reminder daily - 毎日リマインダー\n` +
-                `/mention-reminder weekly - 毎週リマインダー`,
+              `以下の形式でコマンドを送信することができます。：\n` +
+                `/slack-minder hourly - 1時間に1回未読メッセージを取得してリマインドを送ります\n` +
+                `/slack-minder daily - 1日に1回未読メッセージを取得してリマインドを送ります\n` +
+                `/slack-minder weekly - 1週間に1回未読メッセージを取得してリマインドを送ります\n` +
+                `/slack-minder unread - 現時点での未読メッセージを取得して送信します\n` +
+                `/slack-minder delete - 設定しているリマインダーを削除します\n` +
+                `※未読メッセージの取得には時間がかかりますのでしばらくお待ち下さい。`,
             );
+          return;
         }
-        break;
-      case '/unread':
-        this.handleUnread(payload);
-        response.status(200).send('未読メッセージを取得しています...');
+        if (text === 'delete') {
+          this.handleDeleteReminder(payload);
+          response.status(200).send('リマインダーが削除されました。');
+          return;
+        }
+        if (text === 'unread') {
+          this.handleUnread(payload);
+          response.status(200).send('未読メッセージを取得しています...');
+          return;
+        }
+        // 時間の形式が正しいか確認
+        if (['hourly', 'daily', 'weekly'].includes(text)) {
+          this.handleMentionReminder(payload);
+          response.status(200).send(`リマインダーが${text}で設定されました。`);
+          return;
+        }
+        response
+          .status(200)
+          .send(
+            `無効なコマンドです。以下の形式でコマンドを送信してください：\n` +
+              `/slack-minder hourly - 毎時リマインダーの設定\n` +
+              `/slack-minder daily - 毎日リマインダーの設定\n` +
+              `/slack-minder weekly - 毎週リマインダーの設定\n` +
+              `/slack-minder unread - 未読メッセージの取得\n` +
+              `/slack-minder delete - リマインダーの削除\n` +
+              `/slack-minder help - 使い方がわからない場合はこちら`,
+          );
         break;
       default:
         return response.status(400).send('無効なコマンドです。');
@@ -62,6 +85,15 @@ export class AppController {
       await this.appService.sendReminder(payload.user_id, unrepliedMentions);
     } catch (error) {
       console.error('Error sending reminder:', error);
+    }
+  }
+
+  async handleDeleteReminder(payload) {
+    try {
+      // ユーザーのリマインダーを削除
+      await this.appService.deleteUserReminder(payload.user_id);
+    } catch (error) {
+      console.error('Error deleting user reminder:', error);
     }
   }
 
