@@ -5,6 +5,7 @@ import { ConfigModule } from '@nestjs/config';
 import * as bodyParser from 'body-parser';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UserReminder } from './user-reminder.entity';
+import { ScheduleModule } from '@nestjs/schedule';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { UserReminder } from './user-reminder.entity';
       synchronize: true,
     }),
     TypeOrmModule.forFeature([UserReminder]),
+    ScheduleModule.forRoot(),
   ],
   controllers: [AppController],
   providers: [AppService],

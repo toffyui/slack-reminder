@@ -10,7 +10,6 @@ import { UserReminder } from './user-reminder.entity';
 @Injectable()
 export class AppService {
   private readonly slackClient: WebClient;
-  private userReminders: Map<string, string> = new Map();
   private readonly logger = new Logger(AppService.name);
 
   constructor(
@@ -41,12 +40,14 @@ export class AppService {
   }
 
   removeUserReminder(userId: string) {
-    this.userReminders.delete(userId);
+    this.userReminderRepository.delete({ userId });
   }
 
-  @Cron(CronExpression.EVERY_HOUR, {
-    name: 'sendReminders',
-  })
+  @Cron(CronExpression.EVERY_HOUR)
+  handleCron() {
+    this.sendReminders();
+  }
+
   async getPermalink(channel: string, ts: string) {
     const res = await this.slackClient.chat.getPermalink({
       channel,
@@ -56,9 +57,11 @@ export class AppService {
   }
 
   async sendReminders() {
-    this.logger.log('Checking reminders for all users');
     const now = new Date();
-    for (const [userId, time] of this.userReminders.entries()) {
+    this.logger.log('Checking reminders for all users');
+    const userReminders = await this.userReminderRepository.find();
+    for (const { userId, time } of userReminders) {
+      this.logger.log(userId, time);
       let shouldSend = false;
       switch (time) {
         case 'hourly':
