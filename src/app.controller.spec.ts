@@ -16,52 +16,6 @@ describe('AppController', () => {
     appController = app.get<AppController>(AppController);
     appService = app.get<AppService>(AppService);
   });
-
-  describe('handleEvents', () => {
-    it('should return the challenge value for url_verification events', async () => {
-      const mockRes: Partial<Response> = {
-        send: jest.fn(),
-      };
-
-      const body = {
-        type: 'url_verification',
-        challenge: 'test_challenge_value',
-      };
-
-      await appController.handleEvents(
-        body,
-        {} as Request,
-        mockRes as Response,
-      );
-
-      expect(mockRes.send).toHaveBeenCalledWith(body.challenge);
-    });
-
-    it('should handle other event types using the slackEvents object', async () => {
-      const mockRes: Partial<Response> = {
-        status: jest.fn().mockReturnThis(),
-        send: jest.fn(),
-      };
-
-      const mockReq: Partial<Request> = {};
-
-      const body = {
-        type: 'some_event_type',
-      };
-
-      const handle = jest.fn().mockResolvedValue(undefined);
-      const slackEvents = { handle };
-      appController.slackEvents = slackEvents;
-
-      await appController.handleEvents(
-        body,
-        mockReq as Request,
-        mockRes as Response,
-      );
-
-      expect(handle).toHaveBeenCalledWith(mockReq, mockRes);
-    });
-  });
   describe('handleCommands', () => {
     it('should handle the /unread command and send a reminder', async () => {
       const payload = {

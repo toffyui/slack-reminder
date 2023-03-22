@@ -36,31 +36,10 @@ export class AppController {
     });
   }
 
-  @Post('events')
-  async handleEvents(
-    @Body() body: any,
-    @Req() req: Request,
-    @Res() res: Response,
-  ) {
-    console.log('Received event:', body);
-    if (body.type === 'url_verification') {
-      console.log('Sending challenge:', body.challenge);
-      res.send(body.challenge);
-    } else {
-      try {
-        await this.slackEvents.handle(req, res);
-      } catch (error) {
-        console.error(`Failed to handle event: ${error}`);
-        res.status(500).send();
-      }
-    }
-  }
-
   @Post('commands')
   async handleCommands(@Req() request: Request, @Res() response: Response) {
     const payload = request.body;
     const command = payload.command;
-    console.log('Received command:', command);
     /*
      * 時間は、次のような形式で指定できる
      * "hourly"（1時間ごと）
@@ -69,15 +48,27 @@ export class AppController {
      */
     switch (command) {
       case '/mention-reminder':
-        this.handleMentionReminder(payload);
-        response.status(200).send('リマインダーを送信しました。');
+        // 時間の形式が正しいか確認
+        const time = payload.text.trim().toLowerCase();
+        if (['hourly', 'daily', 'weekly'].includes(time)) {
+          this.handleMentionReminder(payload);
+          response.status(200).send(`リマインダーが${time}で設定されました。`);
+        } else {
+          response
+            .status(200)
+            .send(
+              `無効なリマインダー設定です。以下の形式でリマインダーを設定してください：\n` +
+                `/mention-reminder hourly - 毎時リマインダー\n` +
+                `/mention-reminder daily - 毎日リマインダー\n` +
+                `/mention-reminder weekly - 毎週リマインダー`,
+            );
+        }
         break;
       case '/unread':
         this.handleUnread(payload);
         response.status(200).send('未読メッセージを取得しています...');
         break;
       default:
-        response.status(400).send('無効なコマンドです。');
         return response.status(400).send('無効なコマンドです。');
     }
   }

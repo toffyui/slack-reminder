@@ -3,6 +3,9 @@ import { WebClient } from '@slack/web-api';
 import { ConfigService } from '@nestjs/config';
 import { ConvertMessage } from './app.dto';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { UserReminder } from './user-reminder.entity';
 
 @Injectable()
 export class AppService {
@@ -10,13 +13,31 @@ export class AppService {
   private userReminders: Map<string, string> = new Map();
   private readonly logger = new Logger(AppService.name);
 
-  constructor(private configService: ConfigService) {
+  constructor(
+    private configService: ConfigService,
+    @InjectRepository(UserReminder)
+    private userReminderRepository: Repository<UserReminder>,
+  ) {
     const botToken = this.configService.get<string>('SLACK_BOT_TOKEN');
     this.slackClient = new WebClient(botToken);
   }
 
-  addUserReminder(userId: string, time: string) {
-    this.userReminders.set(userId, time);
+  async addUserReminder(userId: string, time: string) {
+    const existingReminder = await this.userReminderRepository.findOne({
+      where: { userId },
+    });
+    if (existingReminder) {
+      // リマインダーが存在する場合、更新
+      existingReminder.time = time;
+      await this.userReminderRepository.save(existingReminder);
+    } else {
+      // リマインダーが存在しない場合、新規作成
+      const newUserReminder = this.userReminderRepository.create({
+        userId,
+        time,
+      });
+      await this.userReminderRepository.save(newUserReminder);
+    }
   }
 
   removeUserReminder(userId: string) {
@@ -66,7 +87,10 @@ export class AppService {
   }
 
   async sendReminder(userId: string, messages: ConvertMessage[]) {
-    const baseText = `リマインダー: 未返信のメッセージが${messages.length}件あります`;
+    const baseText =
+      messages.length === 0
+        ? 'リマインダー：未返信のメッセージはありません:tada:'
+        : `リマインダー: 未返信のメッセージが${messages.length}件あります`;
 
     // 各メッセージについて、リマインダーに情報を追加
     const blocksPromises = messages.map(async (message) => {
