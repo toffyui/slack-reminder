@@ -1,4 +1,12 @@
-import { Controller, Get, Redirect, Req, Res, Post } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Redirect,
+  Req,
+  Res,
+  Post,
+  Session,
+} from '@nestjs/common';
 import { Request, Response } from 'express';
 import { AppService } from './app.service';
 import { IncomingMessage, ServerResponse } from 'http';
@@ -100,15 +108,16 @@ export class AppController {
   // 認証関連
   @Get('auth')
   @Redirect()
-  async startAuth() {
-    return await this.appService.generateAuthUrl();
+  async startAuth(@Session() session: Record<string, any>) {
+    return await this.appService.generateAuthUrl(session);
   }
 
   @Get('auth/callback')
   async handleAuthCallback(
     @Req() req: IncomingMessage,
     @Res() res: ServerResponse,
+    @Session() session: Record<string, any>,
   ): Promise<void> {
-    await this.appService.authenticateBot(req, res);
+    await this.appService.authenticateBot(req, res, session);
   }
 }

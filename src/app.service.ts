@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Session } from '@nestjs/common';
 import { WebClient } from '@slack/web-api';
 import { InstallProvider } from '@slack/oauth';
 import { ConfigService } from '@nestjs/config';
@@ -9,6 +9,7 @@ import { Repository } from 'typeorm';
 import { UserReminder } from './user-reminder.entity';
 import { IncomingMessage, ServerResponse } from 'http';
 import { UserToken } from './user-token.entity';
+import { randomBytes } from 'crypto';
 
 @Injectable()
 export class AppService {
@@ -249,23 +250,42 @@ export class AppService {
   }
 
   // 認証関連
-  async generateAuthUrl() {
+  generateStateParam() {
+    return randomBytes(16).toString('hex');
+  }
+
+  isStateParamValid(receivedState: string, storedState: string) {
+    return receivedState === storedState;
+  }
+  async generateAuthUrl(@Session() session: Record<string, any>) {
+    const state = this.generateStateParam();
+    session.oauthState = state;
     const authUrl = await this.slackInstallProvider.generateInstallUrl({
       scopes: ['commands', 'channels:history', 'channels:join', 'chat:write'],
+      metadata: JSON.stringify({ state }),
     });
     return { url: authUrl };
   }
   async authenticateBot(
     req: IncomingMessage,
     res: ServerResponse,
+    @Session() session: Record<string, any>,
   ): Promise<void> {
     try {
+      const baseUrl = this.configService.get<string>('BASE_URL');
+      const url = new URL(req.url, baseUrl);
+      const receivedState = JSON.parse(url.searchParams.get('metadata')).state;
+      const storedState = session.oauthState;
+
+      if (!this.isStateParamValid(receivedState, storedState)) {
+        throw new Error('Invalid state parameter');
+      }
+
       // handleCallback を使用して認証処理を行う
       await this.slackInstallProvider.handleCallback(req, res);
 
       // 認証結果を取得するために、InstallationStore から botToken を取得
-      const baseUrl = this.configService.get<string>('BASE_URL');
-      const teamId = new URL(req.url, baseUrl).searchParams.get('team_id');
+      const teamId = url.searchParams.get('team_id');
       const installation =
         await this.slackInstallProvider.installationStore.fetchInstallation({
           teamId,
