@@ -1,15 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { WebClient } from '@slack/web-api';
+import { InstallProvider } from '@slack/oauth';
 import { ConfigService } from '@nestjs/config';
 import { ConvertMessage } from './app.dto';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UserReminder } from './user-reminder.entity';
+import { IncomingMessage, ServerResponse } from 'http';
 
 @Injectable()
 export class AppService {
-  private readonly slackClient: WebClient;
+  private slackClient: WebClient;
+  private readonly slackInstallProvider: InstallProvider;
   private readonly logger = new Logger(AppService.name);
 
   constructor(
@@ -19,6 +22,14 @@ export class AppService {
   ) {
     const botToken = this.configService.get<string>('SLACK_BOT_TOKEN');
     this.slackClient = new WebClient(botToken);
+    const clientId = this.configService.get<string>('SLACK_CLIENT_ID');
+    const clientSecret = this.configService.get<string>('SLACK_CLIENT_SECRET');
+    this.slackInstallProvider = new InstallProvider({
+      clientId,
+      clientSecret,
+      authVersion: 'v2',
+      stateSecret: 'my-state-secret',
+    });
   }
 
   async addUserReminder(userId: string, time: string) {
@@ -213,5 +224,41 @@ export class AppService {
     }
     // 未返信のメッセージリストを返す
     return unrepliedMentions;
+  }
+
+  // 認証関連
+  async generateAuthUrl() {
+    const authUrl = await this.slackInstallProvider.generateInstallUrl({
+      scopes: ['commands', 'channels:history', 'channels:join', 'chat:write'],
+    });
+    return { url: authUrl };
+  }
+  async authenticateBot(
+    req: IncomingMessage,
+    res: ServerResponse,
+  ): Promise<void> {
+    try {
+      // handleCallback を使用して認証処理を行う
+      await this.slackInstallProvider.handleCallback(req, res);
+
+      // 認証結果を取得するために、InstallationStore から botToken を取得
+      const baseUrl = this.configService.get<string>('BASE_URL');
+      const teamId = new URL(req.url, baseUrl).searchParams.get('team_id');
+      const installation =
+        await this.slackInstallProvider.installationStore.fetchInstallation({
+          teamId,
+          isEnterpriseInstall: false,
+          enterpriseId: null,
+        });
+      const botToken = installation.bot.token;
+
+      this.slackClient = new WebClient(botToken);
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.end('認証に成功しました。');
+    } catch (error) {
+      console.error('Error during authentication:', error);
+      res.writeHead(400, { 'Content-Type': 'text/plain' });
+      res.end('認証中にエラーが発生しました。');
+    }
   }
 }

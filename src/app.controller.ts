@@ -1,40 +1,11 @@
-import { Controller, Post, Req, Res, Body } from '@nestjs/common';
+import { Controller, Get, Redirect, Req, Res, Post } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { AppService } from './app.service';
-import { createEventAdapter } from '@slack/events-api';
-import { ConfigService } from '@nestjs/config';
+import { IncomingMessage, ServerResponse } from 'http';
 
 @Controller()
 export class AppController {
-  private _slackEvents;
-  get slackEvents() {
-    return this._slackEvents;
-  }
-  set slackEvents(value) {
-    this._slackEvents = value;
-  }
-  constructor(
-    private readonly appService: AppService,
-    private configService: ConfigService,
-  ) {
-    const slackSigningSecret = this.configService.get<string>(
-      'SLACK_SIGNING_SECRET',
-    );
-    this._slackEvents = createEventAdapter(slackSigningSecret);
-
-    // メンションイベントのリスナーを登録
-    this._slackEvents.on('app_mention', async (event) => {
-      const userId = event.user;
-
-      // 未返信のメッセージを取得
-      const unrepliedMentions = await this.appService.fetchUnrepliedMentions(
-        userId,
-      );
-
-      // リマインダーを送信
-      await this.appService.sendReminder(userId, unrepliedMentions);
-    });
-  }
+  constructor(private readonly appService: AppService) {}
 
   @Post('commands')
   async handleCommands(@Req() request: Request, @Res() response: Response) {
@@ -92,5 +63,20 @@ export class AppController {
     } catch (error) {
       console.error('Error sending reminder:', error);
     }
+  }
+
+  // 認証関連
+  @Get('auth')
+  @Redirect()
+  async startAuth() {
+    return await this.appService.generateAuthUrl();
+  }
+
+  @Get('auth/callback')
+  async handleAuthCallback(
+    @Req() req: IncomingMessage,
+    @Res() res: ServerResponse,
+  ): Promise<void> {
+    await this.appService.authenticateBot(req, res);
   }
 }
