@@ -100,6 +100,21 @@ export class AppService {
     });
   }
 
+  // ユーザーがメッセージに返信しているかをチェックする関数
+  async userHasRepliedToMessage(
+    userId: string,
+    message: any,
+    channelId: string,
+  ) {
+    const repliesResult = await this.slackClient.conversations.replies({
+      channel: channelId,
+      ts: message.ts,
+    });
+
+    const replies = repliesResult.messages;
+    return replies.some((reply) => reply.user === userId);
+  }
+
   async fetchUnrepliedMentions(userId: string) {
     const userMentionRegex = new RegExp(`<@${userId}>`);
 
@@ -128,10 +143,25 @@ export class AppService {
       for (const message of messages) {
         if (
           message.subtype !== 'channel_join' &&
-          userMentionRegex.test(message.text) &&
-          (!message.reactions || message.reactions.length === 0)
+          userMentionRegex.test(message.text)
         ) {
-          unrepliedMentions.push({ channel: channel.id, ...message });
+          // ユーザーがリアクションしていないかチェック
+          const userHasNotReacted =
+            !message.reactions ||
+            message.reactions.every(
+              (reaction) => !reaction.users.includes(userId),
+            );
+
+          // ユーザーが返信していないかチェック
+          const userHasNotReplied = !(await this.userHasRepliedToMessage(
+            userId,
+            message,
+            channel.id,
+          ));
+
+          if (userHasNotReacted && userHasNotReplied) {
+            unrepliedMentions.push({ channel: channel.id, ...message });
+          }
         }
       }
     }
