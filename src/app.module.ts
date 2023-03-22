@@ -6,6 +6,7 @@ import * as bodyParser from 'body-parser';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { UserReminder } from './user-reminder.entity';
 import { ScheduleModule } from '@nestjs/schedule';
+import { UserToken } from './user-token.entity';
 
 @Module({
   imports: [
@@ -13,10 +14,10 @@ import { ScheduleModule } from '@nestjs/schedule';
     TypeOrmModule.forRoot({
       type: 'postgres',
       url: process.env.DATABASE_URL,
-      entities: [UserReminder],
+      entities: [UserReminder, UserToken],
       synchronize: true,
     }),
-    TypeOrmModule.forFeature([UserReminder]),
+    TypeOrmModule.forFeature([UserReminder, UserToken]),
     ScheduleModule.forRoot(),
   ],
   controllers: [AppController],

@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UserReminder } from './user-reminder.entity';
 import { IncomingMessage, ServerResponse } from 'http';
+import { UserToken } from './user-token.entity';
 
 @Injectable()
 export class AppService {
@@ -19,6 +20,8 @@ export class AppService {
     private configService: ConfigService,
     @InjectRepository(UserReminder)
     private userReminderRepository: Repository<UserReminder>,
+    @InjectRepository(UserToken)
+    private userTokenRepository: Repository<UserToken>,
   ) {
     const botToken = this.configService.get<string>('SLACK_BOT_TOKEN');
     this.slackClient = new WebClient(botToken);
@@ -72,6 +75,9 @@ export class AppService {
     this.logger.log('Checking reminders for all users');
     const userReminders = await this.userReminderRepository.find();
     for (const { userId, time } of userReminders) {
+      const userTokenResponse = await this.userTokenRepository.findOne({
+        where: { userId: userId },
+      });
       let shouldSend = false;
       switch (time) {
         case 'hourly':
@@ -91,7 +97,11 @@ export class AppService {
       if (shouldSend) {
         try {
           const unrepliedMentions = await this.fetchUnrepliedMentions(userId);
-          await this.sendReminder(userId, unrepliedMentions);
+          await this.sendReminder(
+            userId,
+            unrepliedMentions,
+            userTokenResponse.accessToken,
+          );
         } catch (error) {
           this.logger.error('Error sending reminder:', error);
         }
@@ -99,7 +109,14 @@ export class AppService {
     }
   }
 
-  async sendReminder(userId: string, messages: ConvertMessage[]) {
+  async sendReminder(
+    userId: string,
+    messages: ConvertMessage[],
+    accessToken?: string,
+  ) {
+    if (accessToken) {
+      this.slackClient = new WebClient(accessToken);
+    }
     const baseText =
       messages.length === 0
         ? 'リマインダー：未返信のメッセージはありません:tada:'
@@ -251,7 +268,7 @@ export class AppService {
           enterpriseId: null,
         });
       const botToken = installation.bot.token;
-
+      await this.saveUserToken(teamId, botToken);
       this.slackClient = new WebClient(botToken);
       res.writeHead(200, { 'Content-Type': 'text/plain' });
       res.end('認証に成功しました。');
@@ -259,6 +276,24 @@ export class AppService {
       console.error('Error during authentication:', error);
       res.writeHead(400, { 'Content-Type': 'text/plain' });
       res.end('認証中にエラーが発生しました。');
+    }
+  }
+  async saveUserToken(userId: string, accessToken: string) {
+    const existingToken = await this.userTokenRepository.findOne({
+      where: { userId },
+    });
+
+    if (existingToken) {
+      // Update the access token if it already exists
+      existingToken.accessToken = accessToken;
+      await this.userTokenRepository.save(existingToken);
+    } else {
+      // Create a new entry if it doesn't exist
+      const newUserToken = this.userTokenRepository.create({
+        userId,
+        accessToken,
+      });
+      await this.userTokenRepository.save(newUserToken);
     }
   }
 }
