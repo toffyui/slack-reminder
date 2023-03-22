@@ -61,7 +61,6 @@ export class AppService {
     this.logger.log('Checking reminders for all users');
     const userReminders = await this.userReminderRepository.find();
     for (const { userId, time } of userReminders) {
-      this.logger.log(userId, time);
       let shouldSend = false;
       switch (time) {
         case 'hourly':
@@ -133,13 +132,19 @@ export class AppService {
     message: any,
     channelId: string,
   ) {
+    const parentMessageTs = message.thread_ts || message.ts;
+
     const repliesResult = await this.slackClient.conversations.replies({
       channel: channelId,
-      ts: message.ts,
+      ts: parentMessageTs,
     });
 
     const replies = repliesResult.messages;
-    return replies.some((reply) => reply.user === userId);
+    return replies.some(
+      (reply) =>
+        reply.user === userId &&
+        parseFloat(reply.ts) > parseFloat(parentMessageTs),
+    );
   }
 
   async fetchUnrepliedMentions(userId: string) {
@@ -166,28 +171,42 @@ export class AppService {
         channel: channel.id,
       });
       const messages = messagesResult.messages;
-      // リアクションがないメッセージをフィルタリング
+
+      // 各メッセージをチェック
       for (const message of messages) {
-        if (
-          message.subtype !== 'channel_join' &&
-          userMentionRegex.test(message.text)
-        ) {
-          // ユーザーがリアクションしていないかチェック
-          const userHasNotReacted =
-            !message.reactions ||
-            message.reactions.every(
-              (reaction) => !reaction.users.includes(userId),
-            );
+        // スレッド内のメッセージを取得
+        const threadMessagesResult =
+          await this.slackClient.conversations.replies({
+            channel: channel.id,
+            ts: message.ts,
+          });
 
-          // ユーザーが返信していないかチェック
-          const userHasNotReplied = !(await this.userHasRepliedToMessage(
-            userId,
-            message,
-            channel.id,
-          ));
+        const threadMessages = threadMessagesResult.messages;
+        // チャンネルに参加しましたというメッセージの場合は無視する
+        if (message.subtype === 'channel_join') continue;
+        // メインチャンネルとスレッド内のメッセージを結合
+        const allMessages = [message, ...threadMessages];
 
-          if (userHasNotReacted && userHasNotReplied) {
-            unrepliedMentions.push({ channel: channel.id, ...message });
+        // リアクションがないメッセージをフィルタリング
+        for (const msg of allMessages) {
+          if (userMentionRegex.test(msg.text)) {
+            // ユーザーがリアクションしていないかチェック
+            const userHasNotReacted =
+              !msg.reactions ||
+              msg.reactions.every(
+                (reaction) => !reaction.users.includes(userId),
+              );
+
+            // ユーザーが返信していないかチェック
+            const userHasNotReplied = !(await this.userHasRepliedToMessage(
+              userId,
+              msg,
+              channel.id,
+            ));
+
+            if (userHasNotReacted && userHasNotReplied) {
+              unrepliedMentions.push({ channel: channel.id, ...msg });
+            }
           }
         }
       }
