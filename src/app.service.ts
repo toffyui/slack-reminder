@@ -251,10 +251,7 @@ export class AppService {
         client_secret: clientSecret,
         code,
       });
-      await this.saveUserToken(
-        result.authed_user.id,
-        result.authed_user.access_token,
-      );
+      await this.saveUserToken(result.authed_user.id, result.access_token);
       return `access_token: ${result.authed_user.access_token}`;
     } else if (error) {
       return '認証がキャンセルされました。';

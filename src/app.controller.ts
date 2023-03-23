@@ -101,9 +101,11 @@ export class AppController {
   @Get('auth/callback')
   async getToken(
     @Req() request: Request,
-  ): Promise<OauthV2AccessResponse | string> {
+    @Res() response: Response,
+  ): Promise<OauthV2AccessResponse | void> {
     const code = request.query.code as string | undefined;
     const error = request.query.error as string | undefined;
-    return this.appService.getToken(code, error);
+    await this.appService.getToken(code, error);
+    response.redirect('https://www.google.com/');
   }
 }
