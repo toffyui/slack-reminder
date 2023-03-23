@@ -20,8 +20,7 @@ export class AppService {
     @InjectRepository(UserToken)
     private userTokenRepository: Repository<UserToken>,
   ) {
-    const botToken = this.configService.get<string>('SLACK_BOT_TOKEN');
-    this.slackClient = new WebClient(botToken);
+    this.slackClient = new WebClient();
   }
 
   async addUserReminder(userId: string, time: string) {
