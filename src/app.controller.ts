@@ -35,13 +35,17 @@ export class AppController {
           return;
         }
         if (text === 'delete') {
-          this.handleDeleteReminder(payload);
           response.status(200).send('リマインダーが削除されました。');
+          this.handleDeleteReminder(payload);
           return;
         }
         if (text === 'unread') {
+          response
+            .status(200)
+            .send(
+              '未読メッセージを取得しています...。未読メッセージの取得には数分かかる可能性があります。取得が完了したらDMでお知らせします。',
+            );
           this.handleUnread(payload);
-          response.status(200).send('未読メッセージを取得しています...');
           return;
         }
         // 時間の形式が正しいか確認
