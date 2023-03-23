@@ -1,20 +1,16 @@
-import { Injectable, Logger, Session } from '@nestjs/common';
-import { WebClient } from '@slack/web-api';
-import { InstallProvider } from '@slack/oauth';
+import { Injectable, Logger } from '@nestjs/common';
+import { OauthV2AccessResponse, WebClient } from '@slack/web-api';
 import { ConfigService } from '@nestjs/config';
 import { ConvertMessage } from './app.dto';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UserReminder } from './user-reminder.entity';
-import { IncomingMessage, ServerResponse } from 'http';
 import { UserToken } from './user-token.entity';
-import { randomBytes } from 'crypto';
 
 @Injectable()
 export class AppService {
   private slackClient: WebClient;
-  private readonly slackInstallProvider: InstallProvider;
   private readonly logger = new Logger(AppService.name);
 
   constructor(
@@ -26,14 +22,6 @@ export class AppService {
   ) {
     const botToken = this.configService.get<string>('SLACK_BOT_TOKEN');
     this.slackClient = new WebClient(botToken);
-    const clientId = this.configService.get<string>('SLACK_CLIENT_ID');
-    const clientSecret = this.configService.get<string>('SLACK_CLIENT_SECRET');
-    this.slackInstallProvider = new InstallProvider({
-      clientId,
-      clientSecret,
-      authVersion: 'v2',
-      stateSecret: 'my-state-secret',
-    });
   }
 
   async addUserReminder(userId: string, time: string) {
@@ -250,57 +238,27 @@ export class AppService {
   }
 
   // 認証関連
-  generateStateParam() {
-    return randomBytes(32).toString('hex');
-  }
-
-  isStateParamValid(receivedState: string, storedState: string) {
-    return receivedState === storedState;
-  }
-  async generateAuthUrl(@Session() session: Record<string, any>) {
-    const state = this.generateStateParam();
-    session.oauthState = state;
-    const authUrl = await this.slackInstallProvider.generateInstallUrl({
-      scopes: ['commands', 'channels:history', 'channels:join', 'chat:write'],
-      userScopes: ['openid', 'email'],
-      metadata: JSON.stringify({ state }),
-    });
-    return { url: authUrl };
-  }
-  async authenticateBot(
-    req: IncomingMessage,
-    res: ServerResponse,
-    @Session() session: Record<string, any>,
-  ): Promise<void> {
-    try {
-      const baseUrl = this.configService.get<string>('BASE_URL');
-      const url = new URL(req.url, baseUrl);
-      const receivedState = JSON.parse(url.searchParams.get('metadata')).state;
-      const storedState = session.oauthState;
-      if (!this.isStateParamValid(receivedState, storedState)) {
-        throw new Error('Invalid state parameter');
-      }
-
-      // handleCallback を使用して認証処理を行う
-      await this.slackInstallProvider.handleCallback(req, res);
-
-      // 認証結果を取得するために、InstallationStore から botToken を取得
-      const teamId = url.searchParams.get('team_id');
-      const installation =
-        await this.slackInstallProvider.installationStore.fetchInstallation({
-          teamId,
-          isEnterpriseInstall: false,
-          enterpriseId: null,
-        });
-      const botToken = installation.bot.token;
-      await this.saveUserToken(teamId, botToken);
-      this.slackClient = new WebClient(botToken);
-      res.writeHead(200, { 'Content-Type': 'text/plain' });
-      res.end('認証に成功しました。');
-    } catch (error) {
-      console.error('Error during authentication:', error);
-      res.writeHead(400, { 'Content-Type': 'text/plain' });
-      res.end('認証中にエラーが発生しました。');
+  async getToken(
+    code: string | undefined,
+    error: string | undefined,
+  ): Promise<OauthV2AccessResponse | string> {
+    if (code) {
+      const clientId = this.configService.get<string>('SLACK_CLIENT_ID');
+      const clientSecret = this.configService.get<string>(
+        'SLACK_CLIENT_SECRET',
+      );
+      const result = await this.slackClient.oauth.v2.access({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code,
+      });
+      await this.saveUserToken(
+        result.authed_user.id,
+        result.authed_user.access_token,
+      );
+      return `access_token: ${result.authed_user.access_token}`;
+    } else if (error) {
+      return '認証がキャンセルされました。';
     }
   }
   async saveUserToken(userId: string, accessToken: string) {

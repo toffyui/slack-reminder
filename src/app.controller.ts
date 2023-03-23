@@ -1,15 +1,7 @@
-import {
-  Controller,
-  Get,
-  Redirect,
-  Req,
-  Res,
-  Post,
-  Session,
-} from '@nestjs/common';
+import { Controller, Get, Req, Res, Post } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { AppService } from './app.service';
-import { IncomingMessage, ServerResponse } from 'http';
+import { OauthV2AccessResponse } from '@slack/web-api';
 
 @Controller()
 export class AppController {
@@ -106,18 +98,12 @@ export class AppController {
   }
 
   // 認証関連
-  @Get('auth')
-  @Redirect()
-  async startAuth(@Session() session: Record<string, any>) {
-    return await this.appService.generateAuthUrl(session);
-  }
-
   @Get('auth/callback')
-  async handleAuthCallback(
-    @Req() req: IncomingMessage,
-    @Res() res: ServerResponse,
-    @Session() session: Record<string, any>,
-  ): Promise<void> {
-    await this.appService.authenticateBot(req, res, session);
+  async getToken(
+    @Req() request: Request,
+  ): Promise<OauthV2AccessResponse | string> {
+    const code = request.query.code as string | undefined;
+    const error = request.query.error as string | undefined;
+    return this.appService.getToken(code, error);
   }
 }
