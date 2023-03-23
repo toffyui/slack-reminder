@@ -78,11 +78,7 @@ export class AppController {
 
   async handleUnread(payload) {
     try {
-      // 未返信のメッセージを取得
-      const unrepliedMentions = await this.appService.fetchUnrepliedMentions(
-        payload.user_id,
-      );
-      await this.appService.sendReminder(payload.user_id, unrepliedMentions);
+      await this.appService.sendReminder(payload.user_id);
     } catch (error) {
       console.error('Error sending reminder:', error);
     }
@@ -106,6 +102,6 @@ export class AppController {
     const code = request.query.code as string | undefined;
     const error = request.query.error as string | undefined;
     await this.appService.getToken(code, error);
-    response.redirect(process.env.BASE_URL);
+    response.redirect(process.env.REDIRECT_URL);
   }
 }

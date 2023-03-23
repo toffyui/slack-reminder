@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OauthV2AccessResponse, WebClient } from '@slack/web-api';
 import { ConfigService } from '@nestjs/config';
-import { ConvertMessage } from './app.dto';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -91,8 +90,7 @@ export class AppService {
 
       if (shouldSend) {
         try {
-          const unrepliedMentions = await this.fetchUnrepliedMentions(userId);
-          await this.sendReminder(userId, unrepliedMentions);
+          await this.sendReminder(userId);
         } catch (error) {
           this.logger.error('Error sending reminder:', error);
         }
@@ -100,15 +98,20 @@ export class AppService {
     }
   }
 
-  async sendReminder(userId: string, messages: ConvertMessage[]) {
+  async sendReminder(userId: string) {
     const slackClient = await this.getSlackClient(userId);
+    // 未返信のメッセージを取得
+    const unrepliedMentions = await this.fetchUnrepliedMentions(
+      userId,
+      slackClient,
+    );
     const baseText =
-      messages.length === 0
+      unrepliedMentions.length === 0
         ? 'リマインダー：未返信のメッセージはありません:tada:'
-        : `リマインダー: 未返信のメッセージが${messages.length}件あります`;
+        : `リマインダー: 未返信のメッセージが${unrepliedMentions.length}件あります`;
 
     // 各メッセージについて、リマインダーに情報を追加
-    const blocksPromises = messages.map(async (message) => {
+    const blocksPromises = unrepliedMentions.map(async (message) => {
       const permalink = await this.getPermalink(
         message.channel,
         message.ts,
@@ -148,9 +151,9 @@ export class AppService {
     userId: string,
     message: any,
     channelId: string,
+    slackClient: WebClient,
   ) {
     const parentMessageTs = message.thread_ts || message.ts;
-    const slackClient = await this.getSlackClient(userId);
     const repliesResult = await slackClient.conversations.replies({
       channel: channelId,
       ts: parentMessageTs,
@@ -164,11 +167,10 @@ export class AppService {
     );
   }
 
-  async fetchUnrepliedMentions(userId: string) {
+  async fetchUnrepliedMentions(userId: string, slackClient: WebClient) {
     const userMentionRegex = new RegExp(`<@${userId}>`);
 
     // チャンネルリストを取得
-    const slackClient = await this.getSlackClient(userId);
     const channelsResult = await slackClient.conversations.list();
     const channels = channelsResult.channels;
 
@@ -219,6 +221,7 @@ export class AppService {
               userId,
               msg,
               channel.id,
+              slackClient,
             ));
 
             if (userHasNotReacted && userHasNotReplied) {
