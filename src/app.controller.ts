@@ -106,6 +106,6 @@ export class AppController {
     const code = request.query.code as string | undefined;
     const error = request.query.error as string | undefined;
     await this.appService.getToken(code, error);
-    response.redirect('https://www.google.com/');
+    response.redirect(process.env.BASE_URL);
   }
 }

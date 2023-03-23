@@ -10,7 +10,6 @@ import { UserToken } from './user-token.entity';
 
 @Injectable()
 export class AppService {
-  private slackClient: WebClient;
   private readonly logger = new Logger(AppService.name);
 
   constructor(
@@ -19,8 +18,19 @@ export class AppService {
     private userReminderRepository: Repository<UserReminder>,
     @InjectRepository(UserToken)
     private userTokenRepository: Repository<UserToken>,
-  ) {
-    this.slackClient = new WebClient();
+  ) {}
+
+  // ユーザーIDをもとにtokenを取得してWebClientを初期化する
+  async getSlackClient(userId: string): Promise<WebClient> {
+    const userTokenResponse = await this.userTokenRepository.findOne({
+      where: { userId: userId },
+    });
+
+    if (!userTokenResponse) {
+      throw new Error(`No access token found for user ${userId}`);
+    }
+
+    return new WebClient(userTokenResponse.accessToken);
   }
 
   async addUserReminder(userId: string, time: string) {
@@ -50,8 +60,8 @@ export class AppService {
     this.sendReminders();
   }
 
-  async getPermalink(channel: string, ts: string) {
-    const res = await this.slackClient.chat.getPermalink({
+  async getPermalink(channel: string, ts: string, slackClient: WebClient) {
+    const res = await slackClient.chat.getPermalink({
       channel,
       message_ts: ts,
     });
@@ -63,9 +73,6 @@ export class AppService {
     this.logger.log('Checking reminders for all users');
     const userReminders = await this.userReminderRepository.find();
     for (const { userId, time } of userReminders) {
-      const userTokenResponse = await this.userTokenRepository.findOne({
-        where: { userId: userId },
-      });
       let shouldSend = false;
       switch (time) {
         case 'hourly':
@@ -85,11 +92,7 @@ export class AppService {
       if (shouldSend) {
         try {
           const unrepliedMentions = await this.fetchUnrepliedMentions(userId);
-          await this.sendReminder(
-            userId,
-            unrepliedMentions,
-            userTokenResponse.accessToken,
-          );
+          await this.sendReminder(userId, unrepliedMentions);
         } catch (error) {
           this.logger.error('Error sending reminder:', error);
         }
@@ -97,14 +100,8 @@ export class AppService {
     }
   }
 
-  async sendReminder(
-    userId: string,
-    messages: ConvertMessage[],
-    accessToken?: string,
-  ) {
-    if (accessToken) {
-      this.slackClient = new WebClient(accessToken);
-    }
+  async sendReminder(userId: string, messages: ConvertMessage[]) {
+    const slackClient = await this.getSlackClient(userId);
     const baseText =
       messages.length === 0
         ? 'リマインダー：未返信のメッセージはありません:tada:'
@@ -112,7 +109,11 @@ export class AppService {
 
     // 各メッセージについて、リマインダーに情報を追加
     const blocksPromises = messages.map(async (message) => {
-      const permalink = await this.getPermalink(message.channel, message.ts);
+      const permalink = await this.getPermalink(
+        message.channel,
+        message.ts,
+        slackClient,
+      );
       return {
         type: 'section',
         text: {
@@ -126,7 +127,7 @@ export class AppService {
     const blocks = await Promise.all(blocksPromises);
 
     // リマインダーを送信
-    await this.slackClient.chat.postMessage({
+    await slackClient.chat.postMessage({
       channel: userId,
       text: baseText,
       blocks: [
@@ -149,8 +150,8 @@ export class AppService {
     channelId: string,
   ) {
     const parentMessageTs = message.thread_ts || message.ts;
-
-    const repliesResult = await this.slackClient.conversations.replies({
+    const slackClient = await this.getSlackClient(userId);
+    const repliesResult = await slackClient.conversations.replies({
       channel: channelId,
       ts: parentMessageTs,
     });
@@ -167,7 +168,8 @@ export class AppService {
     const userMentionRegex = new RegExp(`<@${userId}>`);
 
     // チャンネルリストを取得
-    const channelsResult = await this.slackClient.conversations.list();
+    const slackClient = await this.getSlackClient(userId);
+    const channelsResult = await slackClient.conversations.list();
     const channels = channelsResult.channels;
 
     const unrepliedMentions = [];
@@ -177,13 +179,13 @@ export class AppService {
       // Botがチャンネルに参加していない場合、参加させる
       if (!channel.is_member) {
         try {
-          await this.slackClient.conversations.join({ channel: channel.id });
+          await slackClient.conversations.join({ channel: channel.id });
         } catch (error) {
           console.error(`Failed to join channel ${channel.name}:`, error);
           continue;
         }
       }
-      const messagesResult = await this.slackClient.conversations.history({
+      const messagesResult = await slackClient.conversations.history({
         channel: channel.id,
       });
       const messages = messagesResult.messages;
@@ -191,11 +193,10 @@ export class AppService {
       // 各メッセージをチェック
       for (const message of messages) {
         // スレッド内のメッセージを取得
-        const threadMessagesResult =
-          await this.slackClient.conversations.replies({
-            channel: channel.id,
-            ts: message.ts,
-          });
+        const threadMessagesResult = await slackClient.conversations.replies({
+          channel: channel.id,
+          ts: message.ts,
+        });
 
         const threadMessages = threadMessagesResult.messages;
         // チャンネルに参加しましたというメッセージの場合は無視する
@@ -246,7 +247,8 @@ export class AppService {
       const clientSecret = this.configService.get<string>(
         'SLACK_CLIENT_SECRET',
       );
-      const result = await this.slackClient.oauth.v2.access({
+      const slackClient = new WebClient();
+      const result = await slackClient.oauth.v2.access({
         client_id: clientId,
         client_secret: clientSecret,
         code,
